@@ -2543,7 +2543,7 @@ static int iqs9151_apply_kconfig_overrides(const struct device *dev) {
     return 0;
 }
 
-static int iqs9151_init(const struct device *dev) {
+static int __maybe_unused iqs9151_init(const struct device *dev) {
     const struct iqs9151_config *cfg = dev->config;
     struct iqs9151_data *data = dev->data;
     int ret;

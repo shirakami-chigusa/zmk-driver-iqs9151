@@ -1,0 +1,63 @@
+{
+  "nodes": {
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1751274312,
+        "narHash": "sha256-/bVBlRpECLVzjV19t5KMdMFWSwKLtb5RyXdjz3LJT+g=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "50ab793786d9de88ee30ec4e4c24fb4236fc2674",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-24.11",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nixpkgs": "nixpkgs",
+        "zephyr": "zephyr",
+        "zmk": "zmk"
+      }
+    },
+    "zephyr": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1755558002,
+        "narHash": "sha256-E599+0giBlmva0WJSs5t5FKOoLYmrAi51iTNT+qOyXE=",
+        "ref": "refs/heads/v3.5.0+zmk-fixes",
+        "rev": "dacab4875df72109b96cc8977547a0dc04875bcd",
+        "revCount": 85660,
+        "type": "git",
+        "url": "https://github.com/zmkfirmware/zephyr.git"
+      },
+      "original": {
+        "ref": "refs/heads/v3.5.0+zmk-fixes",
+        "type": "git",
+        "url": "https://github.com/zmkfirmware/zephyr.git"
+      }
+    },
+    "zmk": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1754088260,
+        "narHash": "sha256-4OUbkU6tGixO0H9zAG8f2afXIvn2PGkGV9f2uexOmUU=",
+        "owner": "zmkfirmware",
+        "repo": "zmk",
+        "rev": "edf5c0814fd3ea202e43aad2d68fd32e882a518c",
+        "type": "github"
+      },
+      "original": {
+        "owner": "zmkfirmware",
+        "ref": "v0.3.0",
+        "repo": "zmk",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

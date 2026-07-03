@@ -5,7 +5,11 @@ set(CONFIG_APPLICATION_DEFINED_SYSCALL true)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(iqs9151_work_cb_test)
 
-set(ZMK_APP_DIR ${CMAKE_CURRENT_LIST_DIR}/../../../../zmk/app)
+if(DEFINED ENV{ZMK_APP_DIR})
+    set(ZMK_APP_DIR $ENV{ZMK_APP_DIR})
+else()
+    set(ZMK_APP_DIR ${CMAKE_CURRENT_LIST_DIR}/../../../../zmk/app)
+endif()
 zephyr_syscall_header(${ZMK_APP_DIR}/include/drivers/behavior.h)
 zephyr_syscall_header(${ZMK_APP_DIR}/include/drivers/input_processor.h)
 
