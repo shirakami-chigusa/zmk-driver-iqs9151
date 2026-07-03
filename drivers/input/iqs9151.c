@@ -211,6 +211,7 @@ struct iqs9151_data {
     int64_t three_finger_click_pending_ms;
     bool two_finger_one_lead_valid;
     bool two_finger_tail_suppresses_cursor;
+    bool scroll_inertia_stop_suppresses_tap;
     bool three_finger_one_lead_valid;
     bool three_finger_two_lead_valid;
     struct iqs9151_frame prev_frame;
@@ -1202,9 +1203,16 @@ static void iqs9151_two_finger_update(struct iqs9151_data *data,
             iqs9151_clear_two_finger_click_pending(data);
             (void)k_work_cancel_delayable(&data->two_finger_click_work);
         }
+        if (data->scroll_inertia_stop_suppresses_tap) {
+            if (tapdrag_second_touch && data->hold_button == INPUT_BTN_1) {
+                iqs9151_release_hold(data, dev);
+            }
+            tapdrag_second_touch = false;
+        }
         state->active = true;
         state->hold_sent = tapdrag_second_touch;
-        state->tap_candidate = !tapdrag_second_touch &&
+        state->tap_candidate = !data->scroll_inertia_stop_suppresses_tap &&
+            !tapdrag_second_touch &&
             ((prev_frame->finger_count == 0U) ||
              iqs9151_has_recent_finger_count(data, 0U, now_ms, IQS9151_TAP_REENTRY_WINDOW_MS) ||
              one_lead_tap_candidate);
@@ -1706,6 +1714,7 @@ static void iqs9151_reset_gesture_states(struct iqs9151_data *data,
     (void)k_work_cancel_delayable(&data->three_finger_click_work);
     data->two_finger_one_lead_valid = false;
     data->two_finger_tail_suppresses_cursor = false;
+    data->scroll_inertia_stop_suppresses_tap = false;
     data->three_finger_one_lead_valid = false;
     data->three_finger_two_lead_valid = false;
     iqs9151_three_finger_reset(data);
@@ -2098,6 +2107,17 @@ static bool iqs9151_update_gesture_sessions(struct iqs9151_data *data,
     return released_from_hold;
 }
 
+static void iqs9151_update_scroll_inertia_stop_tap_suppression(
+    struct iqs9151_data *data,
+    const struct iqs9151_frame *frame,
+    const struct iqs9151_frame *prev_frame) {
+    if (prev_frame->finger_count == 0U &&
+        frame->finger_count > 0U &&
+        data->inertia_scroll.active) {
+        data->scroll_inertia_stop_suppresses_tap = true;
+    }
+}
+
 static void iqs9151_update_inertia_ema(struct iqs9151_data *data,
                                        const struct iqs9151_frame *frame,
                                        const struct iqs9151_frame *prev_frame,
@@ -2227,6 +2247,8 @@ static void iqs9151_process_frame(struct iqs9151_data *data,
         return;
     }
 
+    iqs9151_update_scroll_inertia_stop_tap_suppression(data, frame, &prev_frame);
+
     released_from_hold =
         iqs9151_update_gesture_sessions(data, frame, &prev_frame, &two_result);
     suppress_cursor_tail =
@@ -2263,6 +2285,9 @@ static void iqs9151_process_frame(struct iqs9151_data *data,
                                suppress_cursor_tail);
     iqs9151_update_prev_frame(data, frame, &prev_frame);
     iqs9151_push_finger_history(data, frame->finger_count, now_ms);
+    if (frame->finger_count == 0U) {
+        data->scroll_inertia_stop_suppresses_tap = false;
+    }
 }
 
 static void iqs9151_work_cb(struct k_work *work) {
@@ -2653,6 +2678,7 @@ static int __maybe_unused iqs9151_init(const struct device *dev) {
     iqs9151_clear_three_finger_click_pending(data);
     data->two_finger_one_lead_valid = false;
     data->two_finger_tail_suppresses_cursor = false;
+    data->scroll_inertia_stop_suppresses_tap = false;
     data->three_finger_one_lead_valid = false;
     data->three_finger_two_lead_valid = false;
     iqs9151_three_finger_reset(data);
@@ -2711,6 +2737,7 @@ void iqs9151_test_context_init(void *ctx, const struct device *dev) {
     iqs9151_clear_three_finger_click_pending(data);
     data->two_finger_one_lead_valid = false;
     data->two_finger_tail_suppresses_cursor = false;
+    data->scroll_inertia_stop_suppresses_tap = false;
     data->three_finger_one_lead_valid = false;
     data->three_finger_two_lead_valid = false;
     iqs9151_three_finger_reset(data);
