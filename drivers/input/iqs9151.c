@@ -45,6 +45,7 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 #define SCROLL_INERTIA_STALE_GAP_MS CONFIG_INPUT_IQS9151_SCROLL_INERTIA_STALE_GAP_MS
 #define SCROLL_INERTIA_MIN_SAMPLES CONFIG_INPUT_IQS9151_SCROLL_INERTIA_MIN_SAMPLES
 #define SCROLL_INERTIA_MIN_AVG_SPEED CONFIG_INPUT_IQS9151_SCROLL_INERTIA_MIN_AVG_SPEED
+#define SCROLL_INERTIA_STOP_TAP_SUPPRESS_MS CONFIG_INPUT_IQS9151_SCROLL_INERTIA_STOP_TAP_SUPPRESS_MS
 
 #define CURSOR_INERTIA_INTERVAL_MS 10
 #define CURSOR_INERTIA_MAX_DURATION_MS 3000
@@ -209,6 +210,8 @@ struct iqs9151_data {
     int64_t two_finger_click_pending_ms;
     bool three_finger_click_pending;
     int64_t three_finger_click_pending_ms;
+    bool scroll_inertia_recent_stop_valid;
+    int64_t scroll_inertia_recent_stop_ms;
     bool two_finger_one_lead_valid;
     bool two_finger_tail_suppresses_cursor;
     bool scroll_inertia_stop_suppresses_tap;
@@ -1712,6 +1715,8 @@ static void iqs9151_reset_gesture_states(struct iqs9151_data *data,
     (void)k_work_cancel_delayable(&data->one_finger_click_work);
     (void)k_work_cancel_delayable(&data->two_finger_click_work);
     (void)k_work_cancel_delayable(&data->three_finger_click_work);
+    data->scroll_inertia_recent_stop_valid = false;
+    data->scroll_inertia_recent_stop_ms = 0;
     data->two_finger_one_lead_valid = false;
     data->two_finger_tail_suppresses_cursor = false;
     data->scroll_inertia_stop_suppresses_tap = false;
@@ -1800,6 +1805,7 @@ static void iqs9151_inertia_scroll_work_cb(struct k_work *work) {
     struct iqs9151_data *data =
         CONTAINER_OF(dwork, struct iqs9151_data, inertia_scroll_work);
     const struct device *dev = data->dev;
+    const bool was_active = data->inertia_scroll.active;
     int32_t out_x;
     int32_t out_y;
 
@@ -1829,6 +1835,9 @@ static void iqs9151_inertia_scroll_work_cb(struct k_work *work) {
     if (active) {
         k_work_schedule(&data->inertia_scroll_work,
                         K_MSEC(iqs9151_scroll_params.interval_ms));
+    } else if (was_active) {
+        data->scroll_inertia_recent_stop_valid = true;
+        data->scroll_inertia_recent_stop_ms = k_uptime_get();
     }
 }
 
@@ -2110,10 +2119,24 @@ static bool iqs9151_update_gesture_sessions(struct iqs9151_data *data,
 static void iqs9151_update_scroll_inertia_stop_tap_suppression(
     struct iqs9151_data *data,
     const struct iqs9151_frame *frame,
-    const struct iqs9151_frame *prev_frame) {
+    const struct iqs9151_frame *prev_frame,
+    int64_t now_ms) {
+    bool recently_stopped = false;
+
+    if (data->scroll_inertia_recent_stop_valid) {
+        const int64_t elapsed_ms = now_ms - data->scroll_inertia_recent_stop_ms;
+
+        if (elapsed_ms >= 0 &&
+            elapsed_ms <= SCROLL_INERTIA_STOP_TAP_SUPPRESS_MS) {
+            recently_stopped = true;
+        } else if (elapsed_ms > SCROLL_INERTIA_STOP_TAP_SUPPRESS_MS) {
+            data->scroll_inertia_recent_stop_valid = false;
+        }
+    }
+
     if (prev_frame->finger_count == 0U &&
         frame->finger_count > 0U &&
-        data->inertia_scroll.active) {
+        (data->inertia_scroll.active || recently_stopped)) {
         data->scroll_inertia_stop_suppresses_tap = true;
     }
 }
@@ -2185,6 +2208,8 @@ static void iqs9151_update_inertia_ema(struct iqs9151_data *data,
                                               &iqs9151_scroll_params,
                                               &iqs9151_scroll_gate_params, now_ms,
                                               &seed_vx_fp, &seed_vy_fp)) {
+            data->scroll_inertia_recent_stop_valid = false;
+            data->scroll_inertia_recent_stop_ms = 0;
             iqs9151_inertia_start(&data->inertia_scroll, &data->inertia_scroll_work,
                                   &iqs9151_scroll_params, seed_vx_fp, seed_vy_fp);
         }
@@ -2247,7 +2272,8 @@ static void iqs9151_process_frame(struct iqs9151_data *data,
         return;
     }
 
-    iqs9151_update_scroll_inertia_stop_tap_suppression(data, frame, &prev_frame);
+    iqs9151_update_scroll_inertia_stop_tap_suppression(data, frame, &prev_frame,
+                                                       now_ms);
 
     released_from_hold =
         iqs9151_update_gesture_sessions(data, frame, &prev_frame, &two_result);
@@ -2679,6 +2705,8 @@ static int __maybe_unused iqs9151_init(const struct device *dev) {
     data->two_finger_one_lead_valid = false;
     data->two_finger_tail_suppresses_cursor = false;
     data->scroll_inertia_stop_suppresses_tap = false;
+    data->scroll_inertia_recent_stop_valid = false;
+    data->scroll_inertia_recent_stop_ms = 0;
     data->three_finger_one_lead_valid = false;
     data->three_finger_two_lead_valid = false;
     iqs9151_three_finger_reset(data);
@@ -2738,6 +2766,8 @@ void iqs9151_test_context_init(void *ctx, const struct device *dev) {
     data->two_finger_one_lead_valid = false;
     data->two_finger_tail_suppresses_cursor = false;
     data->scroll_inertia_stop_suppresses_tap = false;
+    data->scroll_inertia_recent_stop_valid = false;
+    data->scroll_inertia_recent_stop_ms = 0;
     data->three_finger_one_lead_valid = false;
     data->three_finger_two_lead_valid = false;
     iqs9151_three_finger_reset(data);
@@ -2808,6 +2838,14 @@ bool iqs9151_test_scroll_inertia_active(const void *ctx) {
     const struct iqs9151_data *data = (const struct iqs9151_data *)ctx;
 
     return data->inertia_scroll.active;
+}
+
+void iqs9151_test_force_scroll_inertia_recently_stopped(void *ctx, int64_t stop_ms) {
+    struct iqs9151_data *data = (struct iqs9151_data *)ctx;
+
+    iqs9151_inertia_cancel(&data->inertia_scroll, &data->inertia_scroll_work);
+    data->scroll_inertia_recent_stop_valid = true;
+    data->scroll_inertia_recent_stop_ms = stop_ms;
 }
 
 void iqs9151_test_force_pinch_session(void *ctx, bool active) {

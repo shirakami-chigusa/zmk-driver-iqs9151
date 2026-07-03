@@ -51,6 +51,7 @@ void iqs9151_test_force_hold_button(void *ctx, uint16_t button);
 uint8_t iqs9151_test_prev_finger_count(const void *ctx);
 bool iqs9151_test_cursor_inertia_active(const void *ctx);
 bool iqs9151_test_scroll_inertia_active(const void *ctx);
+void iqs9151_test_force_scroll_inertia_recently_stopped(void *ctx, int64_t stop_ms);
 void iqs9151_test_force_pinch_session(void *ctx, bool active);
 #endif
 

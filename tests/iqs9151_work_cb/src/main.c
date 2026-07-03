@@ -346,6 +346,53 @@ ZTEST_F(iqs9151_work_cb, test_staggered_two_finger_tap_stops_scroll_inertia_with
                   "Only the original scroll event should be reported");
 }
 
+ZTEST_F(iqs9151_work_cb, test_two_finger_tap_after_scroll_inertia_natural_stop_suppresses_btn1) {
+    const int64_t stop_ms = 1000;
+    const struct iqs9151_test_frame two_stop_tap =
+        make_frame(2U,
+                   IQS9151_TP_FINGER1_CONFIDENCE | IQS9151_TP_FINGER2_CONFIDENCE | 2U,
+                   0, 0, 0, 100, 100, 200, 100);
+    const struct iqs9151_test_frame release =
+        make_frame(0U, 0U, 0, 0, 0, 0, 0, 0, 0);
+
+    iqs9151_test_force_scroll_inertia_recently_stopped(fixture->ctx, stop_ms);
+    iqs9151_test_process_frame(
+        fixture->ctx, &two_stop_tap,
+        stop_ms + CONFIG_INPUT_IQS9151_SCROLL_INERTIA_STOP_TAP_SUPPRESS_MS);
+    iqs9151_test_process_frame(
+        fixture->ctx, &release,
+        stop_ms + CONFIG_INPUT_IQS9151_SCROLL_INERTIA_STOP_TAP_SUPPRESS_MS + 10);
+
+    zassert_false(iqs9151_test_scroll_inertia_active(fixture->ctx),
+                  "Scroll inertia should be inactive after natural stop");
+    zassert_equal(fixture->log.count, 0U,
+                  "2F tap immediately after natural scroll stop must not emit BTN1");
+}
+
+ZTEST_F(iqs9151_work_cb, test_two_finger_tap_after_scroll_inertia_stop_window_emits_btn1) {
+    const int64_t stop_ms = 1000;
+    const struct iqs9151_test_frame two_tap =
+        make_frame(2U,
+                   IQS9151_TP_FINGER1_CONFIDENCE | IQS9151_TP_FINGER2_CONFIDENCE | 2U,
+                   0, 0, 0, 100, 100, 200, 100);
+    const struct iqs9151_test_frame release =
+        make_frame(0U, 0U, 0, 0, 0, 0, 0, 0, 0);
+
+    iqs9151_test_force_scroll_inertia_recently_stopped(fixture->ctx, stop_ms);
+    iqs9151_test_process_frame(
+        fixture->ctx, &two_tap,
+        stop_ms + CONFIG_INPUT_IQS9151_SCROLL_INERTIA_STOP_TAP_SUPPRESS_MS + 1);
+    iqs9151_test_process_frame(
+        fixture->ctx, &release,
+        stop_ms + CONFIG_INPUT_IQS9151_SCROLL_INERTIA_STOP_TAP_SUPPRESS_MS + 11);
+
+    zassert_equal(fixture->log.count, 1U,
+                  "2F tap after stop suppress window should still emit BTN1");
+    zassert_equal(fixture->log.events[0].type, IQS9151_TEST_EVENT_KEY, "Event[0] not key");
+    zassert_equal(fixture->log.events[0].code, INPUT_BTN_1, "Event[0] unexpected code");
+    zassert_equal(fixture->log.events[0].value, 1, "Event[0] should be BTN1 press");
+}
+
 ZTEST_F(iqs9151_work_cb, test_two_finger_scroll_tail_two_to_one_to_zero_suppresses_cursor_path) {
     const struct iqs9151_test_frame two_start =
         make_frame(2U,

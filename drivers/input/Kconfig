@@ -284,6 +284,15 @@ config INPUT_IQS9151_SCROLL_INERTIA_MIN_AVG_SPEED
       Minimum average recent two-finger scroll speed required to start
       scroll inertia.
 
+config INPUT_IQS9151_SCROLL_INERTIA_STOP_TAP_SUPPRESS_MS
+    int "IQS9151 scroll inertia stop tap suppress window (ms)"
+    range 0 1000
+    default 250
+    help
+      Time window after scroll inertia naturally stops during which a new
+      two-finger tap is treated as a scroll-stop gesture instead of BTN1.
+      Active scroll inertia is always suppressing, regardless of this value.
+
 config INPUT_IQS9151_2F_PINCH_ENABLE
     bool "IQS9151 two-finger pinch enable"
     default y
