@@ -123,6 +123,15 @@ config INPUT_IQS9151_1F_TAP_MOVE
     help
       Maximum accumulated movement for 1F tap detection (driver-side).
 
+config INPUT_IQS9151_1F_TAP_CURSOR_DEADZONE
+    int "IQS9151 single-finger tap cursor deadzone"
+    range 0 1000
+    default 12
+    help
+      Suppress cursor motion while a 1F touch is still a tap candidate
+      and accumulated movement stays within this threshold. Exceeding
+      this threshold cancels the tap candidate and allows cursor motion.
+
 config INPUT_IQS9151_1F_PRESSHOLD_ENABLE
     bool "IQS9151 single-finger press/hold enable"
     default y

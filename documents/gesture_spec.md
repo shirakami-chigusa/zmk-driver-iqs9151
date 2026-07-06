@@ -39,6 +39,8 @@
 - 1F:
   - `ONE_FINGER_TAP_MAX_MS = 120` (`CONFIG_INPUT_IQS9151_1F_TAP_MAX_MS`)
   - `ONE_FINGER_TAP_MOVE = 25` (`CONFIG_INPUT_IQS9151_1F_TAP_MOVE`)
+  - `ONE_FINGER_TAP_CURSOR_DEADZONE = 12`
+    (`CONFIG_INPUT_IQS9151_1F_TAP_CURSOR_DEADZONE`)
   - `ONE_FINGER_CLICK_HOLD_MAX_MS = 230`
     (`CONFIG_INPUT_IQS9151_1F_TAPDRAG_GAP_MAX_MS`)
   - `ONE_FINGER_TAPDRAG_GAP_MAX_MS = 230`
@@ -80,6 +82,10 @@
     `prev==0` または `TAP_REENTRY_WINDOW_MS` 内に `finger_count==0`
   - 成立: `finger_count==0` かつ
     `elapsed<=ONE_FINGER_TAP_MAX_MS` かつ `abs(dx/dy)<=ONE_FINGER_TAP_MOVE`
+  - Tap候補中のカーソル移動抑制:
+    - `abs(dx/dy)<=ONE_FINGER_TAP_CURSOR_DEADZONE` の間は `REL_X/Y` を送出しない
+    - 抑制中の移動は cursor inertia の履歴にも入れない
+    - `ONE_FINGER_TAP_CURSOR_DEADZONE` を超えた時点で Tap候補を破棄し、以後は通常の1Fカーソル移動として扱う
   - `CONFIG_INPUT_IQS9151_1F_PRESSHOLD_ENABLE=y` のとき:
     - `INPUT_BTN_0` を即 press し、`ONE_FINGER_CLICK_HOLD_MAX_MS` まで保持
     - 監視中に2回目タッチが来なければ timeout で release（単クリック確定）
@@ -293,3 +299,6 @@
 - 2026-04-09: 2F scroll inertia の停止条件に新規 1F 接触 (`0->1`) を追加
   - scroll inertia 動作中に新しい 1F タッチが始まった場合は inertia を停止する
   - 既存の `2->1->0` tail 抑止仕様とは独立で、tail の `2->1` は停止条件に含めない
+- 2026-07-06: 1F Tap候補中のカーソル移動抑制を追加
+  - `ONE_FINGER_TAP_CURSOR_DEADZONE` 以内の `REL_X/Y` 送出と cursor inertia 履歴記録を抑止
+  - deadzone 超過時は Tap候補を破棄し、通常の1Fカーソル移動へ遷移

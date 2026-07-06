@@ -76,6 +76,7 @@ LOG_MODULE_REGISTER(iqs9151, CONFIG_INPUT_IQS9151_LOG_LEVEL);
 #define THREE_FINGER_TAP_MAX_MS CONFIG_INPUT_IQS9151_3F_TAP_MAX_MS
 #define THREE_FINGER_TAP_MOVE CONFIG_INPUT_IQS9151_3F_TAP_MOVE
 #define ONE_FINGER_TAP_MOVE CONFIG_INPUT_IQS9151_1F_TAP_MOVE
+#define ONE_FINGER_TAP_CURSOR_DEADZONE CONFIG_INPUT_IQS9151_1F_TAP_CURSOR_DEADZONE
 #define TWO_FINGER_TAP_MOVE CONFIG_INPUT_IQS9151_2F_TAP_MOVE
 #define TWO_FINGER_SCROLL_START_MOVE CONFIG_INPUT_IQS9151_2F_SCROLL_START_MOVE
 #define TWO_FINGER_PINCH_START_DISTANCE CONFIG_INPUT_IQS9151_2F_PINCH_START_DISTANCE
@@ -1036,6 +1037,12 @@ static void iqs9151_two_finger_result_reset(struct iqs9151_two_finger_result *re
     memset(result, 0, sizeof(*result));
 }
 
+static bool iqs9151_one_finger_tap_motion_within_deadzone(
+    const struct iqs9151_one_finger_state *state) {
+    return iqs9151_abs32(state->dx) <= ONE_FINGER_TAP_CURSOR_DEADZONE &&
+           iqs9151_abs32(state->dy) <= ONE_FINGER_TAP_CURSOR_DEADZONE;
+}
+
 static bool iqs9151_one_finger_update(struct iqs9151_data *data,
                                       const struct iqs9151_frame *frame,
                                       const struct iqs9151_frame *prev_frame,
@@ -1100,6 +1107,7 @@ static bool iqs9151_one_finger_update(struct iqs9151_data *data,
 
         if (state->tap_candidate &&
             (elapsed_ms > ONE_FINGER_TAP_MAX_MS ||
+             !iqs9151_one_finger_tap_motion_within_deadzone(state) ||
              iqs9151_abs32(state->dx) > ONE_FINGER_TAP_MOVE ||
              iqs9151_abs32(state->dy) > ONE_FINGER_TAP_MOVE)) {
             state->tap_candidate = false;
@@ -2264,6 +2272,7 @@ static void iqs9151_process_frame(struct iqs9151_data *data,
     const bool cursor_moving =
         (frame->trackpad_flags & IQS9151_TP_MOVEMENT_DETECTED) != 0U;
     bool released_from_hold;
+    bool cursor_moving_for_output;
     bool suppress_cursor_tail;
 
     iqs9151_two_finger_result_reset(&two_result);
@@ -2295,7 +2304,17 @@ static void iqs9151_process_frame(struct iqs9151_data *data,
         iqs9151_motion_history_reset(&data->cursor_motion_history);
     }
 
-    iqs9151_report_frame_events(dev, frame, &two_result, cursor_moving,
+    cursor_moving_for_output = cursor_moving;
+    if (frame->finger_count == 1U &&
+        data->one_finger.active &&
+        data->one_finger.tap_candidate &&
+        !data->one_finger.hold_sent &&
+        !data->one_finger.tapdrag_second_touch &&
+        iqs9151_one_finger_tap_motion_within_deadzone(&data->one_finger)) {
+        cursor_moving_for_output = false;
+    }
+
+    iqs9151_report_frame_events(dev, frame, &two_result, cursor_moving_for_output,
                                 suppress_cursor_tail);
 
     LOG_DBG("rel x=%d y=%d info=0x%04x tp=0x%04x finger=%d f1x=%u f1y=%u f2x=%u f2y=%u",
@@ -2307,7 +2326,7 @@ static void iqs9151_process_frame(struct iqs9151_data *data,
             data->two_finger.mode);
 
     iqs9151_update_inertia_ema(data, frame, &prev_frame, &two_result, now_ms,
-                               released_from_hold, cursor_moving,
+                               released_from_hold, cursor_moving_for_output,
                                suppress_cursor_tail);
     iqs9151_update_prev_frame(data, frame, &prev_frame);
     iqs9151_push_finger_history(data, frame->finger_count, now_ms);

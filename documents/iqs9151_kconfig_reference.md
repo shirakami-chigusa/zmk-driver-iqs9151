@@ -39,6 +39,7 @@
 |`CONFIG_INPUT_IQS9151_1F_TAP_ENABLE`|bool|`y`|1F Tap 有効/無効|
 |`CONFIG_INPUT_IQS9151_1F_TAP_MAX_MS`|int|`250`|1F Tap/2回目Tap 判定の最大時間|
 |`CONFIG_INPUT_IQS9151_1F_TAP_MOVE`|int|`50`|1F Tap 移動しきい値|
+|`CONFIG_INPUT_IQS9151_1F_TAP_CURSOR_DEADZONE`|int|`12`|1F Tap 判定中にカーソル移動を抑制する移動しきい値|
 |`CONFIG_INPUT_IQS9151_1F_PRESSHOLD_ENABLE`|bool|`y`|1F deferred-click/drag 有効/無効|
 |`CONFIG_INPUT_IQS9151_1F_TAPDRAG_GAP_MAX_MS`|int|`160`|1F Tap後にBTN0を保持して2回目タッチを待つ最大時間|
 |`CONFIG_INPUT_IQS9151_2F_TAP_ENABLE`|bool|`y`|2F Tap 有効/無効|

@@ -105,6 +105,55 @@ ZTEST_F(iqs9151_work_cb, test_show_reset_releases_pinch_and_clears_state) {
                   "Hold button should be cleared");
 }
 
+ZTEST_F(iqs9151_work_cb, test_one_finger_tap_deadzone_suppresses_cursor_motion) {
+    const struct iqs9151_test_frame one_down =
+        make_frame(1U,
+                   IQS9151_TP_FINGER1_CONFIDENCE | IQS9151_TP_MOVEMENT_DETECTED | 1U,
+                   4, 0, 0, 100, 100, 0, 0);
+    const struct iqs9151_test_frame small_move =
+        make_frame(1U,
+                   IQS9151_TP_FINGER1_CONFIDENCE | IQS9151_TP_MOVEMENT_DETECTED | 1U,
+                   4, 0, 0, 108, 100, 0, 0);
+    const struct iqs9151_test_frame release =
+        make_frame(0U, 0U, 0, 0, 0, 0, 0, 0, 0);
+
+    iqs9151_test_process_frame(fixture->ctx, &one_down, 0);
+    iqs9151_test_process_frame(fixture->ctx, &small_move, 10);
+    iqs9151_test_process_frame(fixture->ctx, &release, 20);
+
+    zassert_equal(fixture->log.count, 1U,
+                  "Expected only deferred BTN0 press for deadzone tap");
+    zassert_equal(fixture->log.events[0].type, IQS9151_TEST_EVENT_KEY, "Event[0] not key");
+    zassert_equal(fixture->log.events[0].code, INPUT_BTN_0, "Event[0] unexpected code");
+    zassert_equal(fixture->log.events[0].value, 1, "Event[0] should be BTN0 press");
+    zassert_false(iqs9151_test_cursor_inertia_active(fixture->ctx),
+                  "Suppressed tap motion must not seed cursor inertia");
+}
+
+ZTEST_F(iqs9151_work_cb, test_one_finger_deadzone_exceeded_cancels_tap_and_reports_cursor) {
+    const struct iqs9151_test_frame one_down =
+        make_frame(1U,
+                   IQS9151_TP_FINGER1_CONFIDENCE | IQS9151_TP_MOVEMENT_DETECTED | 1U,
+                   4, 0, 0, 100, 100, 0, 0);
+    const struct iqs9151_test_frame move_past_deadzone =
+        make_frame(1U,
+                   IQS9151_TP_FINGER1_CONFIDENCE | IQS9151_TP_MOVEMENT_DETECTED | 1U,
+                   4, 0, 0, 113, 100, 0, 0);
+    const struct iqs9151_test_frame release =
+        make_frame(0U, 0U, 0, 0, 0, 0, 0, 0, 0);
+
+    iqs9151_test_process_frame(fixture->ctx, &one_down, 0);
+    iqs9151_test_process_frame(fixture->ctx, &move_past_deadzone, 10);
+    iqs9151_test_process_frame(fixture->ctx, &release, 20);
+
+    zassert_equal(fixture->log.count, 2U,
+                  "Expected REL_X/Y only after tap deadzone is exceeded");
+    zassert_equal(fixture->log.events[0].type, IQS9151_TEST_EVENT_REL, "Event[0] not REL");
+    zassert_equal(fixture->log.events[0].code, INPUT_REL_X, "Event[0] unexpected code");
+    zassert_equal(fixture->log.events[1].type, IQS9151_TEST_EVENT_REL, "Event[1] not REL");
+    zassert_equal(fixture->log.events[1].code, INPUT_REL_Y, "Event[1] unexpected code");
+}
+
 ZTEST_F(iqs9151_work_cb, test_one_finger_release_starts_cursor_inertia) {
     const struct iqs9151_test_frame one_start =
         make_frame(1U,
@@ -114,19 +163,24 @@ ZTEST_F(iqs9151_work_cb, test_one_finger_release_starts_cursor_inertia) {
         make_frame(1U,
                    IQS9151_TP_FINGER1_CONFIDENCE | IQS9151_TP_MOVEMENT_DETECTED | 1U,
                    20, 0, 0, 140, 100, 0, 0);
+    const struct iqs9151_test_frame one_move_more =
+        make_frame(1U,
+                   IQS9151_TP_FINGER1_CONFIDENCE | IQS9151_TP_MOVEMENT_DETECTED | 1U,
+                   20, 0, 0, 180, 100, 0, 0);
     const struct iqs9151_test_frame release =
         make_frame(0U, 0U, 0, 0, 0, 0, 0, 0, 0);
 
     iqs9151_test_process_frame(fixture->ctx, &one_start, 0);
     iqs9151_test_process_frame(fixture->ctx, &one_move, 10);
-    iqs9151_test_process_frame(fixture->ctx, &release, 20);
+    iqs9151_test_process_frame(fixture->ctx, &one_move_more, 20);
+    iqs9151_test_process_frame(fixture->ctx, &release, 30);
 
     zassert_true(iqs9151_test_cursor_inertia_active(fixture->ctx),
                  "Cursor inertia should start on release");
     zassert_equal(iqs9151_test_prev_finger_count(fixture->ctx), 0U,
                   "Previous frame should track release");
     zassert_equal(fixture->log.count, 4U,
-                  "Only REL events from movement frames are expected");
+                  "Only REL events after tap cursor deadzone are expected");
     for (size_t i = 0; i < fixture->log.count; i++) {
         zassert_equal(fixture->log.events[i].type, IQS9151_TEST_EVENT_REL,
                       "Unexpected non-REL event at idx %u", (unsigned int)i);
@@ -142,17 +196,22 @@ ZTEST_F(iqs9151_work_cb, test_one_finger_release_after_stale_gap_does_not_start_
         make_frame(1U,
                    IQS9151_TP_FINGER1_CONFIDENCE | IQS9151_TP_MOVEMENT_DETECTED | 1U,
                    20, 0, 0, 140, 100, 0, 0);
+    const struct iqs9151_test_frame one_move_more =
+        make_frame(1U,
+                   IQS9151_TP_FINGER1_CONFIDENCE | IQS9151_TP_MOVEMENT_DETECTED | 1U,
+                   20, 0, 0, 180, 100, 0, 0);
     const struct iqs9151_test_frame release =
         make_frame(0U, 0U, 0, 0, 0, 0, 0, 0, 0);
 
     iqs9151_test_process_frame(fixture->ctx, &one_start, 0);
     iqs9151_test_process_frame(fixture->ctx, &one_move, 10);
+    iqs9151_test_process_frame(fixture->ctx, &one_move_more, 20);
     iqs9151_test_process_frame(fixture->ctx, &release, 80);
 
     zassert_false(iqs9151_test_cursor_inertia_active(fixture->ctx),
                   "Cursor inertia should stay off after a stale release");
     zassert_equal(fixture->log.count, 4U,
-                  "Only REL events from active movement frames are expected");
+                  "Only REL events after tap cursor deadzone are expected");
 }
 
 ZTEST_F(iqs9151_work_cb, test_one_finger_release_after_slowdown_does_not_start_cursor_inertia) {
@@ -252,6 +311,10 @@ ZTEST_F(iqs9151_work_cb, test_new_one_finger_touch_cancels_scroll_inertia) {
         make_frame(1U,
                    IQS9151_TP_FINGER1_CONFIDENCE | IQS9151_TP_MOVEMENT_DETECTED | 1U,
                    18, 0, 0, 120, 100, 0, 0);
+    const struct iqs9151_test_frame one_move =
+        make_frame(1U,
+                   IQS9151_TP_FINGER1_CONFIDENCE | IQS9151_TP_MOVEMENT_DETECTED | 1U,
+                   18, 0, 0, 140, 100, 0, 0);
 
     iqs9151_test_process_frame(fixture->ctx, &two_start, 0);
     iqs9151_test_process_frame(fixture->ctx, &two_scroll, 10);
@@ -264,8 +327,13 @@ ZTEST_F(iqs9151_work_cb, test_new_one_finger_touch_cancels_scroll_inertia) {
 
     zassert_false(iqs9151_test_scroll_inertia_active(fixture->ctx),
                   "A new 1F touch should cancel scroll inertia");
+    zassert_equal(fixture->log.count, 1U,
+                  "Initial 1F touch should be suppressed while it is a tap candidate");
+
+    iqs9151_test_process_frame(fixture->ctx, &one_move, 40);
+
     zassert_equal(fixture->log.count, 3U,
-                  "Expected one scroll REL event plus one 1F cursor frame");
+                  "Expected one scroll REL event plus one 1F cursor frame after deadzone");
     zassert_equal(fixture->log.events[1].type, IQS9151_TEST_EVENT_REL, "Event[1] not REL");
     zassert_equal(fixture->log.events[1].code, INPUT_REL_X, "Event[1] should be REL_X");
     zassert_equal(fixture->log.events[1].value, 18, "Event[1] unexpected REL_X value");
